@@ -38,5 +38,5 @@ window.MilkyCloud = (() => {
       if(mutation)unconfirmed.delete(key);return data;
     }
   }
-  return {request,isConfigured:()=>Boolean(endpoint)};
+  return {request,isConfigured:()=>Boolean(endpoint),hasSession:()=>Boolean(token),warmup:connect};
 })();
