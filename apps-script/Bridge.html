@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><script>
+// The channel is bound to the configured GitHub origin and an unpredictable nonce.
+const allowedOrigin=<?!= originJSON ?>, nonce=<?!= nonceJSON ?>;
+const channel=new MessageChannel();
+channel.port1.onmessage=event=>{
+  const message=event.data;
+  if(!message||typeof message.id!=='string'||typeof message.request!=='object')return;
+  google.script.run.withSuccessHandler(result=>channel.port1.postMessage({id:message.id,result}))
+    .withFailureHandler(()=>channel.port1.postMessage({id:message.id,result:{ok:false,code:'CONNECTION',error:'구글 시트 연결이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.'}}))
+    .rpc(message.request);
+};
+channel.port1.start();
+window.top.postMessage({type:'milky-sheets-ready',nonce},allowedOrigin,[channel.port2]);
+</script></body></html>

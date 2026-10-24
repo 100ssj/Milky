@@ -65,3 +65,14 @@ node --check public/app.js
 ## 글꼴
 
 에스코어 공식 배포 S-Core Dream의 Regular·Medium·Bold·ExtraBold 원본 OTF를 앱에 포함하여 자체 제공합니다. public/fonts/NOTICE.md와 LICENSE.png를 함께 보존하세요. OS에 글꼴을 별도로 설치하지 않아도 됩니다.
+
+
+## Google Sheets 공용 저장소 연결
+
+GitHub Pages에서 학생들이 접속하고 기록을 공용 Google 시트에 쌓는 연결 코드를 `apps-script/`에 준비했습니다. 시트 소유 계정에서 초기 설정과 Google 권한 승인, Apps Script 웹 앱 배포를 마쳐야 실제로 연결됩니다. 아직 새 시트와 배포 주소가 지정되지 않은 상태를 연결 완료로 표시하지 않습니다.
+
+- 설정 안내: [apps-script/SETUP.md](apps-script/SETUP.md)
+- 백엔드 권한·저장 동작 검사: `node tools/test_apps_script.cjs`
+- Pages 빌드: `python tools/build_pages.py --endpoint APPS_SCRIPT_EXEC_URL`
+- 기본 `public/config.js`는 기존 Python 로컬 모드를 유지합니다. 빌드한 `docs/config.js`만 Google Sheets 모드와 배포 주소를 사용합니다.
+- 저장은 비공개 Google 시트에서 처리합니다. 미리보기나 브라우저에만 보관하는 방식으로 대체하지 않습니다.
