@@ -129,18 +129,22 @@ const fixedToday=plain(context.dailyTaskIds_({student:a.student,grade:5,school_i
 bank.forEach(task=>context.createTask_({...task,day:context.day_()},task.request_id));
 assert.deepEqual(plain(context.dailyTaskIds_({student:a.student,grade:5,school_id:1},plain(context.rows_('tasks')).filter(t=>Number(t.grade)===5).map(t=>({...t,id:Number(t.id)})))),fixedToday,'adding a bank does not replace the existing daily choice');
 const dailyLogin={code:schools[1].code,grade:6,classroom:3,number:4,pin:'123456'};
+const peerLogin={...dailyLogin,code:schools[0].code,classroom:7,number:8};
 const seen=new Set();let firstBankTask;
 for(let date=0;date<10;date++){
  if(date)clock+=24*3600000;
  const learner=good(call('join',dailyLogin)),daily=good(call('tasks',{},learner.token)).filter(t=>t.daily);
  assert.equal(daily.length,3);assert.equal(new Set(daily.map(t=>t.kind)).size,3);assert.ok(daily.every(t=>t.bank&&t.grade===6));
  assert.deepEqual(good(call('tasks',{},learner.token)).filter(t=>t.daily).map(t=>t.id),daily.map(t=>t.id));
+ const peer=good(call('join',peerLogin));
+ assert.deepEqual(good(call('tasks',{},peer.token)).filter(t=>t.daily).map(t=>t.id),daily.map(t=>t.id),'same grade at both schools must share the same questions');
  for(const task of daily){
   assert.ok(!seen.has(task.id),'finished bank tasks must not repeat before exhaustion');seen.add(task.id);
   if(task.kind==='word'&&!firstBankTask)firstBankTask=task;
   const answers={word:{meaning:'서로 힘을 모음',clue:'함께 역할을 나누었다.',example:'친구와 협력했다.'},sentence:{sentence:'비가 왔다. 그래서 안에서 놀았다.',reason:'앞 문장이 까닭이다.'},paragraph:{central:task.passage.split('\n')[0],summary:'핵심 내용을 설명한다.',question:'어떤 예가 더 있을까?'}}[task.kind];
   good(call('submit',{task:task.id,answers,confidence:'조금 알겠어요'},learner.token));
  }
+ assert.deepEqual(good(call('tasks',{},peer.token)).filter(t=>t.daily).map(t=>t.id),daily.map(t=>t.id),'completion by one student must not change another student\'s questions');
 }
 assert.equal(seen.size,30);
 clock+=24*3600000;
@@ -157,5 +161,11 @@ const dailyTeacherPassword=logs.filter(text=>text.startsWith('새 교사 비밀�
 const dailyAdmin=good(call('join',{role:'teacher',password:dailyTeacherPassword}));
 good(call('task',{...gradeTask,grade:6,day:context.day_(),title:'오늘 교사 지정',school_id:2},dailyAdmin.token));
 const nextStudent=good(call('join',{...dailyLogin,number:5}));
-assert.ok(good(call('tasks',{},nextStudent.token)).some(t=>t.daily&&t.title==='오늘 교사 지정'));
-console.log('PASS: roles, privacy, recovery, original history, 60 bank texts, stable daily choices, 10 days without repeats, dated repeat records and teacher priority.');
+assert.ok(!good(call('tasks',{},nextStudent.token)).some(t=>t.daily&&t.title==='오늘 교사 지정'),'school-only activities must not split the common schedule');
+const tomorrow=new TestDate(clock+24*3600000),tomorrowDay=context.Utilities.formatDate(tomorrow,'Asia/Seoul','yyyy-MM-dd');
+good(call('task',{...gradeTask,grade:6,day:tomorrowDay,title:'두 학교 공통 지정',school_id:''},dailyAdmin.token));
+clock+=24*3600000;
+const nextDayStudent=good(call('join',dailyLogin)),nextDayPeer=good(call('join',peerLogin));
+assert.ok(good(call('tasks',{},nextDayStudent.token)).some(t=>t.daily&&t.title==='두 학교 공통 지정'));
+assert.deepEqual(good(call('tasks',{},nextDayStudent.token)).filter(t=>t.daily).map(t=>t.id),good(call('tasks',{},nextDayPeer.token)).filter(t=>t.daily).map(t=>t.id));
+console.log('PASS: privacy, recovery, original answers, 60 texts, same-grade common questions across schools, 10 different days, dated history and common teacher priority.');

@@ -33,6 +33,7 @@ function login(role='student',reset=false){
 function home(){view='home';if(me.role==='teacher')return teacher();
  const hasDaily=tasks.some(t=>t.daily),latest=hasDaily?day():(tasks.length?tasks[0].day:day());const selected=hasDaily?tasks.filter(t=>t.daily):tasks.filter(t=>t.day===latest);const done=selected.filter(t=>currentResponse(t));
  app.innerHTML=`<section class="hero"><div><span class="eyebrow">어휘 · 문장 · 문단</span><h1>${me.grade}학년 ${me.classroom}반 ${me.number}번의<br>문해력 보물지도</h1><p>잘 쓰는 것보다, 내 생각으로 한 걸음씩 나아가요.</p></div><span class="date">${esc(latest)} · ${latest===day()?'오늘의 활동':'가장 최근 활동'}</span></section><section class="path"><div><strong>한 걸음씩, 문해력 보물지도를 수놓아요</strong><p>이 날짜에 열린 활동 ${selected.length}개 중 ${done.length}개를 마쳤어요.</p></div><div class="dots">${selected.map((t,i)=>`<span class="dot ${Boolean(currentResponse(t))?'done':''}" aria-label="${labels[t.kind]} ${Boolean(currentResponse(t))?'완료':'미완료'}">${Boolean(currentResponse(t))?'✓':i+1}</span>`).join('')}</div></section><div class="cards">${selected.map(card).join('')}</div>${!selected.length?'<p class="empty">아직 열린 활동이 없어요. 선생님이 활동을 등록하면 나타납니다.</p>':''}<div class="section-title"><h2>나의 탐험 기록</h2><span class="muted">누적 ${responses.length}개 활동</span></div><p class="note">내 답안과 선생님의 피드백을 다시 읽고, 생각을 더해 보세요.</p><div>${responses.length?`<button class="secondary" id="dictionary">나만의 단어 사전 (${responses.filter(r=>r.kind==='word').length}) →</button>`:''}${responses.length?responses.map(record).join(''):'<div class="empty">첫 활동을 마치면 이곳에 기록이 쌓여요.</div>'}</div>${tasks.some(t=>t.day!==latest)?`<div class="section-title"><h2>이전 활동 이어 하기</h2></div><div class="cards">${tasks.filter(t=>t.day!==latest).map(card).join('')}</div>`:''}`;
+ if(cloudMode&&hasDaily){const progress=document.querySelector('.path p');progress.textContent='두 학교의 같은 학년은 오늘 같은 문항을 풀어요. '+progress.textContent;}
  bindOpen(); const dictionary=document.querySelector('#dictionary'); if(dictionary)dictionary.onclick=wordbook;
 }
 function currentResponse(t){return responses.find(r=>r.task===t.id&&(!t.bank||r.day===day()));}
@@ -57,6 +58,7 @@ function teacher(tab='records'){
  app.innerHTML=`<section class="hero"><div><span class="eyebrow">문해 기초 활동 · 교사 활동실</span><h1>학생 활동 기록</h1><p>어휘·문장·문단 활동을 준비하고, 학생들의 기록을 살펴보세요.</p></div><button class="secondary" id="reload">새로고침 ↻</button></section><div class="tabs"><button id="records-tab" class="${tab==='records'?'active':''}">학생 기록</button><button id="tasks-tab" class="${tab==='tasks'?'active':''}">활동 만들기</button></div><div id="teacher-content"></div>`;
  document.querySelector('#records-tab').onclick=()=>teacher();document.querySelector('#tasks-tab').onclick=()=>teacher('tasks');document.querySelector('#reload').onclick=async()=>{try{await refresh();teacher(tab);toast('최신 기록을 불러왔어요.');}catch(e){toast(e.message);}};
  if(cloudMode){
+  document.querySelector('.hero p').textContent='두 학교의 같은 학년은 매일 같은 세 문항을 풉니다. 학생별 기록과 피드백을 확인하세요.';
   document.querySelector('#tasks-tab').insertAdjacentHTML('afterend',`<button id="students-tab" class="${tab==='students'?'active':''}">학생 관리</button>`);
   document.querySelector('#students-tab').onclick=()=>teacher('students');
  }

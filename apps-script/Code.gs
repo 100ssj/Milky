@@ -166,21 +166,16 @@ function tasks_(session){
   return tasks.map(t=>({...t,day:t.bank?day_():t.day,daily:selected.includes(t.id)}));
 }
 function dailyTaskIds_(identity,tasks){
-  const p=PropertiesService.getScriptProperties(),key='DAILY_'+identity.student,today=day_(),stored=p.getProperty(key),previous=stored?JSON.parse(stored):null;
+  const p=PropertiesService.getScriptProperties(),key='COMMON_DAILY_V1_'+identity.grade,today=day_(),stored=p.getProperty(key),previous=stored?JSON.parse(stored):null;
   if(previous&&previous.day===today&&previous.ids.every(id=>tasks.some(t=>t.id===id)))return previous.ids;
-  const history=rows_('history').filter(h=>Number(h.student)===identity.student),done=new Set(history.map(h=>Number(h.task))),ids=[];
+  const ids=[],dayIndex=Math.floor((Date.parse(today)-Date.parse('2026-10-24'))/86400000);
   for(const kind of ['word','sentence','paragraph']){
-    const candidates=tasks.filter(t=>t.kind===kind).sort((a,b)=>a.id-b.id);if(!candidates.length)continue;
-    // Keep a task already submitted today, including work started before this feature.
-    const answered=history.filter(h=>h.saved.startsWith(today)&&candidates.some(t=>t.id===Number(h.task))).at(-1);
-    if(answered){ids.push(Number(answered.task));continue;}
-    // A teacher's explicitly dated activity takes priority over the practice bank.
+    // The shared grade schedule ignores school and individual completion history.
+    const candidates=tasks.filter(t=>t.kind===kind&&!t.school_id).sort((a,b)=>a.id-b.id);if(!candidates.length)continue;
     const planned=candidates.filter(t=>t.day===today&&!t.bank&&!String(t.request_id||'').startsWith('seed-'));
     const practice=candidates.filter(t=>t.bank),available=practice.length?practice:candidates;
-    const unfinished=available.filter(t=>!done.has(t.id));
-    const pool=planned.length?planned:(unfinished.length?unfinished:available);
-    let hash=2166136261;for(const char of identity.student+'|'+today+'|'+kind)hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
-    ids.push(pool[hash%pool.length].id);
+    const pool=planned.length?planned:available;
+    ids.push(pool[((dayIndex%pool.length)+pool.length)%pool.length].id);
   }
   p.setProperty(key,JSON.stringify({day:today,ids}));return ids;
 }
