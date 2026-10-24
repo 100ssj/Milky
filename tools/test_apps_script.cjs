@@ -84,4 +84,12 @@ clock+=901000;assert.ok(good(call('join',login)).token);
 busy=true;assert.equal(call('submit',{},again.token).code,'BUSY');busy=false;
 context.resetTeacherPassword_();assert.equal(call('me',{},admin.token).ok,false);
 assert.equal(sheets.get('답안이력').getLastRow(),7);
+const displayed=sheets.get('답안이력').data;
+assert.deepEqual(displayed[0].slice(7,11),['학교','학년','반','번호']);
+for(const row of displayed.slice(1)){
+  const student=sheets.get('학생').data.find(s=>String(s[0])===String(row[2]));
+  const school=sheets.get('학교').data.find(s=>String(s[0])===String(student[1]));
+  assert.deepEqual(row.slice(7,11).map(String),[school[1],student[2],student[3],student[4]].map(String));
+  assert.equal(row[23],row[5]);assert.equal(row[24],row[6]);
+}
 console.log('PASS: school/class isolation, role checks, append-only revisions, idempotency, feedback privacy, CSV, session revocation, rate limits, future tasks and write contention.');

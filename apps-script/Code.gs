@@ -9,6 +9,7 @@ const TABLES_ = {
 };
 const ANSWERS_ = {word:['meaning','clue','example'],sentence:['sentence','reason'],paragraph:['central','summary','question']};
 const CONFIDENCE_ = ['도움이 필요해요','조금 알겠어요','설명할 수 있어요'];
+const HISTORY_DISPLAY_HEADERS_=['학교','학년','반','번호','활동일','영역','활동명','핵심 낱말 / 표현','짐작한 뜻','문맥의 단서','활용 문장','연결한 문장','표현 선택 이유','중심 문장','핵심 요약','질문','자기 점검','저장 시각'];
 
 // Editor-visible entry point. Anonymous web-app visitors cannot initialize storage.
 function initializeStorage(){
@@ -33,6 +34,7 @@ function setupAdmin_() {
     if(sheet.getLastRow()===0){sheet.getRange(1,1,1,headers.length).setValues([headers]);sheet.setFrozenRows(1);sheet.getRange(1,1,1,headers.length).setBackground('#24385f').setFontColor('#ffffff').setFontWeight('bold');}
     else if(sheet.getRange(1,1,1,headers.length).getValues()[0].join('|')!==headers.join('|'))throw new Error(name+' 시트의 기존 열이 다릅니다. 덮어쓰지 않았습니다.');
   });
+  book.getSheetByName('답안이력').getRange(1,8,1,HISTORY_DISPLAY_HEADERS_.length).setValues([HISTORY_DISPLAY_HEADERS_]);
   if(!rows_('schools').length){
     append_('schools',{id:1,name:'온샘초등학교',code:'OS-'+random_().slice(0,10).toUpperCase()});
     append_('schools',{id:2,name:'동명초등학교',code:'DM-'+random_().slice(0,10).toUpperCase()});
@@ -152,7 +154,7 @@ function submit_(session,body,requestId){
   const history=rows_('history'),duplicate=history.find(h=>h.submission_id===requestId&&Number(h.student)===identity.student);
   if(duplicate)return {ok:true,saved:duplicate.saved};
   const previous=history.find(h=>Number(h.student)===identity.student&&Number(h.task)===task.id),saved=now_();
-  append_('history',{submission_id:requestId,response_id:previous?previous.response_id:next_(history,'response_id'),student:identity.student,task:task.id,answers_json:JSON.stringify(answers),confidence:body.confidence,saved});
+  append_('history',{submission_id:requestId,response_id:previous?previous.response_id:next_(history,'response_id'),student:identity.student,task:task.id,answers_json:JSON.stringify(answers),confidence:body.confidence,saved},{identity,task});
   return {ok:true,saved};
 }
 function createTask_(body,requestId){
@@ -186,7 +188,11 @@ function rows_(key){
   if(sheet.getLastRow()<2)return [];
   return sheet.getRange(2,1,sheet.getLastRow()-1,headers.length).getValues().filter(row=>row[0]!=='').map(row=>Object.fromEntries(headers.map((h,i)=>[h,String(row[i]==null?'':row[i])])));
 }
-function append_(key,row){const [name,headers]=TABLES_[key],sheet=book_().getSheetByName(name);write_(sheet,sheet.getLastRow()+1,headers.map(k=>row[k]==null?'':row[k]));}
+function historyDisplay_(row,identity,task){
+  const answers=JSON.parse(row.answers_json);
+  return [identity.school_name,identity.grade,identity.classroom,identity.number,task.day,{word:'어휘',sentence:'문장',paragraph:'문단'}[task.kind],task.title,task.target,...['meaning','clue','example','sentence','reason','central','summary','question'].map(k=>answers[k]||''),row.confidence,row.saved];
+}
+function append_(key,row,display){const [name,headers]=TABLES_[key],sheet=book_().getSheetByName(name);let values=headers.map(k=>row[k]==null?'':row[k]);if(key==='history'&&display)values=values.concat(historyDisplay_(row,display.identity,display.task));write_(sheet,sheet.getLastRow()+1,values);}
 function update_(key,index,row){const [name,headers]=TABLES_[key];write_(book_().getSheetByName(name),index+2,headers.map(k=>row[k]==null?'':row[k]));}
 function write_(sheet,row,values){sheet.getRange(row,1,1,values.length).setNumberFormat('@').setValues([values.map(v=>{const s=String(v);return /^[=+\-@]/.test(s)?"'"+s:s;})]);}
 function book_(){const id=PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');if(!id)fail_('먼저 시트 초기 설정을 실행해 주세요.');return SpreadsheetApp.openById(id);}
