@@ -1,0 +1,22 @@
+# Runtime data and private configuration
+data/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite3-*
+*.db-*
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Local development exports and reference material
+/*.png
+*.csv
+*.hwpx
+*.pdf
+tmp/
+output/
