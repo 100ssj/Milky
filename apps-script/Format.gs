@@ -1,3 +1,24 @@
+/** Owner enters the new credential directly in the bound spreadsheet dialog. */
+function changeTeacherPassword(){
+  if(!Session.getActiveUser().getEmail()||Session.getActiveUser().getEmail()!==Session.getEffectiveUser().getEmail())throw new Error('시트 소유 계정의 편집기에서 실행하세요.');
+  const ui=SpreadsheetApp.getUi();
+  const first=ui.prompt('교사 비밀번호 변경','새 교사 비밀번호를 직접 입력하세요.',ui.ButtonSet.OK_CANCEL);
+  if(first.getSelectedButton()!==ui.Button.OK)return;
+  const password=first.getResponseText();
+  if(password.length<4){ui.alert('비밀번호는 4자 이상 입력하세요. 변경하지 않았습니다.');return;}
+  const second=ui.prompt('교사 비밀번호 확인','같은 비밀번호를 한 번 더 입력하세요.',ui.ButtonSet.OK_CANCEL);
+  if(second.getSelectedButton()!==ui.Button.OK)return;
+  if(second.getResponseText()!==password){ui.alert('두 비밀번호가 다릅니다. 변경하지 않았습니다.');return;}
+  const lock=LockService.getScriptLock();lock.waitLock(20000);
+  try{
+    const salt=random_();
+    PropertiesService.getScriptProperties().setProperties({TEACHER_SALT:salt,TEACHER_HASH:secretHash_(password,salt)});
+    rows_('sessions').forEach((row,index)=>{if(row.role==='teacher'){update_('sessions',index,{...row,expires:'0'});CacheService.getScriptCache().remove('session:'+row.token_hash);}});
+  }finally{lock.releaseLock();}
+  console.log('교사 비밀번호 변경 완료. 기존 교사 로그인은 종료했습니다.');
+  ui.alert('교사 비밀번호를 변경했습니다. 사이트에서 새 비밀번호로 입장하세요.');
+}
+
 /** Editor-only formatting. Does not change the web app's source tables. */
 function formatTeacherWorkbook(){
   if(!Session.getActiveUser().getEmail()||Session.getActiveUser().getEmail()!==Session.getEffectiveUser().getEmail())throw new Error('시트 소유 계정의 편집기에서 실행하세요.');

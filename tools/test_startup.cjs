@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname,'../public/app.js'),'utf8');
 function boot(hasSession){
   const elements=new Map();
-  const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',style:{},querySelector:child=>element(id+' '+child)});return elements.get(id);};
+  const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',style:{},insertAdjacentHTML(){},querySelector:child=>element(id+' '+child)});return elements.get(id);};
   const requests=[];let warmed=0;
   const sandbox={document:{querySelector:element,querySelectorAll:()=>[]},
     window:{MILKY_CONFIG:{mode:'sheets'},MilkyCloud:{hasSession:()=>hasSession,isConfigured:()=>true,

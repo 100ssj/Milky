@@ -65,10 +65,11 @@ function rpc(request){
   try{
     if(!request||typeof request!=='object'||JSON.stringify(request).length>45000)fail_('요청 내용을 확인해 주세요.');
     const action=String(request.action||''),body=request.payload||{};
-    if(!['join','logout','me','context','tasks','responses','submit','task','feedback','export'].includes(action))fail_('지원하지 않는 요청입니다.');
-    const write=['join','logout','submit','task','feedback'].includes(action);
+    if(!['join','logout','me','context','tasks','responses','submit','task','feedback','export','students','reset-student','reset-pin'].includes(action))fail_('지원하지 않는 요청입니다.');
+    const write=['join','logout','submit','task','feedback','reset-student','reset-pin'].includes(action);
     if(write){lock=LockService.getScriptLock();if(!lock.tryLock(20000))return {ok:false,code:'BUSY',error:'제출이 몰리고 있습니다. 잠시 후 다시 시도해 주세요.'};}
     if(action==='join')return {ok:true,data:join_(body)};
+    if(action==='reset-pin')return {ok:true,data:resetPin_(body)};
     const session=session_(request.token);
     if(action==='logout'){
       const hashed=tokenHash_(request.token);const sessions=rows_('sessions'),index=sessions.findIndex(r=>r.token_hash===hashed);
@@ -77,6 +78,8 @@ function rpc(request){
     }
     if(action==='me')return {ok:true,data:identity_(session)};
     if(action==='context'){teacher_(session);return {ok:true,data:{schools:rows_('schools').map(s=>({...s,id:Number(s.id)}))}};}
+    if(action==='students'){teacher_(session);return {ok:true,data:studentList_()};}
+    if(action==='reset-student'){teacher_(session);return {ok:true,data:resetStudent_(body)};}
     if(action==='tasks')return {ok:true,data:tasks_(session)};
     if(action==='responses')return {ok:true,data:responses_(session)};
     if(action==='submit')return {ok:true,data:submit_(session,body,request.requestId)};
@@ -102,7 +105,7 @@ function join_(body){
     if(!school)reject('학교 입장 코드를 확인해 주세요.');
     if(![5,6].includes(grade)||!Number.isInteger(classroom)||classroom<1||classroom>30||!Number.isInteger(number)||number<1||number>60||!/^\d{6}$/.test(pin))fail_('학년, 반(1~30), 번호(1~60), 숫자 6자리 비밀번호를 확인해 주세요.');
     const students=rows_('students');let row=students.find(s=>s.school_id===school.id&&Number(s.grade)===grade&&Number(s.classroom)===classroom&&Number(s.number)===number);
-    if(row){if(!equal_(row.pin_hash,secretHash_(pin,row.salt)))reject('학생 비밀번호가 일치하지 않습니다.');}
+    if(row){if(PropertiesService.getScriptProperties().getProperty('RESET_'+row.id))reject('선생님에게 받은 재설정 코드로 비밀번호를 다시 정해 주세요.');if(!equal_(row.pin_hash,secretHash_(pin,row.salt)))reject('학생 비밀번호가 일치하지 않습니다.');}
     else{const salt=random_();row={id:next_(students,'id'),school_id:school.id,grade,classroom,number,salt,pin_hash:secretHash_(pin,salt),created:now_()};append_('students',row);}
     student=Number(row.id);
   }
@@ -127,6 +130,34 @@ function identity_(session){
   return {role:'student',student:Number(student.id),school_id:Number(school.id),school_name:school.name,grade:Number(student.grade),classroom:Number(student.classroom),number:Number(student.number),expires:Number(session.expires)/1000};
 }
 function teacher_(session){if(session.role!=='teacher')fail_('교사 권한이 필요합니다.');}
+function revokeStudentSessions_(id){rows_('sessions').forEach((s,i)=>{if(s.role==='student'&&Number(s.student)===Number(id)){update_('sessions',i,{...s,expires:'0'});CacheService.getScriptCache().remove('session:'+s.token_hash);}});}
+function studentList_(){
+  const schools=new Map(rows_('schools').map(s=>[s.id,s.name])),p=PropertiesService.getScriptProperties();
+  return rows_('students').map(s=>({id:Number(s.id),school_id:Number(s.school_id),school_name:schools.get(s.school_id),grade:Number(s.grade),classroom:Number(s.classroom),number:Number(s.number),reset_pending:Boolean(p.getProperty('RESET_'+s.id))}));
+}
+function resetStudent_(body){
+  const student=rows_('students').find(s=>Number(s.id)===Number(body.id));if(!student)fail_('등록된 학생을 선택해 주세요.');
+  const code=random_().slice(0,8).toUpperCase(),salt=random_(),expires=Date.now()+30*60000;
+  PropertiesService.getScriptProperties().setProperty('RESET_'+student.id,JSON.stringify({salt,hash:secretHash_(code,salt),expires}));
+  CacheService.getScriptCache().remove('reset:'+tokenHash_(student.school_id+'|'+student.grade+'|'+student.classroom+'|'+student.number));
+  revokeStudentSessions_(student.id);
+  return {code,expires,student:Number(student.id)};
+}
+function resetPin_(body){
+  const school=rows_('schools').find(s=>s.code===String(body.code||'').trim().toUpperCase());
+  const grade=Number(body.grade),classroom=Number(body.classroom),number=Number(body.number),pin=String(body.pin||'');
+  if(!school||![5,6].includes(grade)||!Number.isInteger(classroom)||!Number.isInteger(number))fail_('학교·학년·반·번호와 재설정 코드를 확인해 주세요.');
+  if(!/^\d{6}$/.test(pin)||pin!==String(body.pin_confirm||''))fail_('새 비밀번호는 같은 숫자 6자리로 두 번 입력하세요.');
+  const students=rows_('students'),index=students.findIndex(s=>s.school_id===school.id&&Number(s.grade)===grade&&Number(s.classroom)===classroom&&Number(s.number)===number);
+  const key='reset:'+tokenHash_(school.id+'|'+grade+'|'+classroom+'|'+number),cache=CacheService.getScriptCache(),failures=Number(cache.get(key)||0);
+  if(failures>=6)fail_('재설정 코드 입력 오류가 반복되었습니다. 15분 후 다시 시도해 주세요.');
+  const student=students[index],p=PropertiesService.getScriptProperties(),entry=student&&p.getProperty('RESET_'+student.id),reset=entry?JSON.parse(entry):null;
+  if(!reset||reset.expires<=Date.now()||!equal_(reset.hash,secretHash_(String(body.reset_code||'').trim().toUpperCase(),reset.salt))){cache.put(key,String(failures+1),900);fail_('학교·학년·반·번호와 재설정 코드 또는 유효시간을 확인해 주세요.');}
+  const salt=random_();update_('students',index,{...student,salt,pin_hash:secretHash_(pin,salt)});
+  revokeStudentSessions_(student.id);p.deleteProperty('RESET_'+student.id);cache.remove(key);
+  cache.remove('login:'+tokenHash_(String(body.code)+'|'+grade+'|'+classroom+'|'+number));
+  return join_({...body,role:'student'});
+}
 function tasks_(session){
   const identity=identity_(session);
   return rows_('tasks').filter(t=>session.role==='teacher'||(Number(t.grade)===identity.grade&&t.day<=day_()&&(!t.school_id||Number(t.school_id)===identity.school_id))).map(t=>({...t,id:Number(t.id),grade:Number(t.grade),school_id:t.school_id?Number(t.school_id):null})).sort((a,b)=>b.day.localeCompare(a.day)||a.id-b.id);

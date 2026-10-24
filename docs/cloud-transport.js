@@ -33,7 +33,7 @@ window.MilkyCloud = (() => {
       const id=random();const result=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{waiting.delete(id);reject(new Error('저장 결과를 확인하지 못했습니다. 입력 내용은 임시 보관됩니다. 다시 제출해 주세요.'));},90000);waiting.set(id,{resolve,reject,timer});port.postMessage({id,request:{action,payload,token,requestId}});});
       if(!result?.ok){if(result?.code==='BUSY'&&attempt===0)continue;if(result?.code==='INPUT')unconfirmed.delete(key);throw new Error(result?.error||'시트 요청을 처리하지 못했습니다.');}
       const data=result.data;
-      if(action==='join'){token=data.token;try{sessionStorage.setItem(sessionKey,token);}catch{}delete data.token;}
+      if(action==='join'||action==='reset-pin'){token=data.token;try{sessionStorage.setItem(sessionKey,token);}catch{}delete data.token;}
       if(action==='logout'){token='';try{sessionStorage.removeItem(sessionKey);}catch{}}
       if(mutation)unconfirmed.delete(key);return data;
     }

@@ -12,11 +12,23 @@ function toast(message){const t=document.querySelector('#toast');t.textContent=m
 async function api(path,body){if(cloudMode)return window.MilkyCloud.request(path,body);const r=await fetch('/api/'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await r.json();if(!r.ok)throw new Error(data.error||'요청을 처리하지 못했어요.');return data;}
 async function refresh(){const data=await Promise.all([api('tasks'),api('responses'),me.role==='teacher'?api('context'):Promise.resolve(context)]);[tasks,responses,context]=data;}
 function header(){account.innerHTML=me?`<span>${me.role==='teacher'?'교사 활동실':`${esc(me.school_name)} · ${me.grade}학년 ${me.classroom}반 ${me.number}번`}</span><button class="quiet" id="logout">나가기</button>`:'';if(me)document.querySelector('#logout').onclick=async()=>{try{await api('logout',{});me=null;header();login();}catch(e){toast(e.message);}};}
-function login(role='student'){
+function login(role='student',reset=false){
  app.innerHTML=`<section class="intro"><div><h1>은하수를 따라,<br>문해력 보물찾기.</h1><p>낱말 하나에서 문장으로, 문장에서 문단으로.<br>짧게 읽고, 생각하고, 내 말로 표현하는 아침이에요.</p><div class="galaxy" aria-hidden="true"><span class="orbit"></span><span class="orbit"></span><span class="planet"></span><i class="star">✦</i><i class="star">✧</i><i class="star">✦</i><i class="star">✧</i></div><span class="badge">문해 기초 활동 · 5–6학년 · 어휘 / 문장 / 문단</span></div><div class="panel"><div class="tabs"><button data-role="student" class="${role==='student'?'active':''}">학생으로 입장</button><button data-role="teacher" class="${role==='teacher'?'active':''}">교사로 입장</button></div><h2>${role==='student'?'오늘의 보물을 찾아볼까요?':'우리 반의 탐험 기록을 살펴보세요'}</h2><form id="join">${role==='student'?`<label for="code">학교 입장 코드</label><input id="code" name="code" placeholder="선생님이 알려 주신 코드" required autocomplete="off"><div class="row"><div><label for="grade">학년</label><select id="grade" name="grade"><option value="5">5학년</option><option value="6">6학년</option></select></div><div><label for="classroom">반</label><input id="classroom" name="classroom" type="number" min="1" max="30" value="1" required></div><div><label for="number">출석 번호</label><input id="number" name="number" type="number" min="1" max="60" placeholder="번호" required></div></div><label for="pin">나만의 비밀번호 (숫자 6자리)</label><input id="pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off"><p class="note">처음 입장하면 학생 계정이 만들어집니다. 다음에도 같은 학교 코드·학년·반·번호·비밀번호로 입장하세요.</p>`:`<label for="password">교사 비밀번호</label><input id="password" name="password" type="password" required autocomplete="current-password"><p class="note">${cloudMode?'구글 시트 초기 설정 때 발급된 교사 비밀번호를 입력하세요.':'서버를 실행한 터미널에 표시된 비밀번호를 입력하세요.'}</p>`}<button class="primary full">${role==='student'?'활동실 들어가기 →':'교사 활동실 열기 →'}</button><p class="error" role="alert" id="error"></p></form></div></section>`;
  document.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>login(b.dataset.role));
+ if(cloudMode&&role==='student'){
+  const form=document.querySelector('#join');
+  form.insertAdjacentHTML('afterend',`<button type="button" class="quiet full" id="reset-pin-toggle">${reset?'← 원래 입장 화면으로':'비밀번호를 잊었나요?'}</button>`);
+  document.querySelector('#reset-pin-toggle').onclick=()=>login('student',!reset);
+  if(reset){
+   document.querySelector('.panel h2').textContent='비밀번호 다시 정하기';
+   document.querySelector('label[for="pin"]').textContent='새 비밀번호 (숫자 6자리)';
+   form.querySelector('.note').textContent='선생님에게 재설정 코드를 받은 뒤 입력하세요. 기존 활동 기록은 그대로 이어집니다.';
+   form.querySelector('button').insertAdjacentHTML('beforebegin','<label for="pin-confirm">새 비밀번호 확인</label><input id="pin-confirm" name="pin_confirm" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off"><label for="reset-code">선생님에게 받은 재설정 코드</label><input id="reset-code" name="reset_code" minlength="8" maxlength="8" required autocomplete="off">');
+   form.querySelector('button').textContent='새 비밀번호로 입장하기 →';
+  }
+ }
  if(cloudMode&&!window.MilkyCloud.isConfigured()){document.querySelector('#error').textContent='구글 시트 연결 설정이 아직 완료되지 않았습니다.';document.querySelector('#join button').disabled=true;}
- document.querySelector('#join').onsubmit=async e=>{e.preventDefault();const form=e.target,b=form.querySelector('button'),label=b.textContent;b.disabled=true;b.textContent='입장 정보를 확인하고 있어요…';try{me=await api('join',{...Object.fromEntries(new FormData(form)),role});b.textContent='활동 기록을 불러오고 있어요…';await refresh();header();home();}catch(err){const error=form.querySelector('#error');if(error)error.textContent=err.message;}finally{b.disabled=false;b.textContent=label;}};
+ document.querySelector('#join').onsubmit=async e=>{e.preventDefault();const form=e.target,b=form.querySelector('button'),label=b.textContent;b.disabled=true;b.textContent='입장 정보를 확인하고 있어요…';try{me=await api(reset?'reset-pin':'join',{...Object.fromEntries(new FormData(form)),role});b.textContent='활동 기록을 불러오고 있어요…';await refresh();header();home();}catch(err){const error=form.querySelector('#error');if(error)error.textContent=err.message;}finally{b.disabled=false;b.textContent=label;}};
 }
 function home(){view='home';if(me.role==='teacher')return teacher();
  const latest=tasks.length?tasks[0].day:day();const selected=tasks.filter(t=>t.day===latest);const done=selected.filter(t=>responses.some(r=>r.task===t.id));
@@ -43,6 +55,11 @@ function wordbook(){
 function teacher(tab='records'){
  app.innerHTML=`<section class="hero"><div><span class="eyebrow">문해 기초 활동 · 교사 활동실</span><h1>학생 활동 기록</h1><p>어휘·문장·문단 활동을 준비하고, 학생들의 기록을 살펴보세요.</p></div><button class="secondary" id="reload">새로고침 ↻</button></section><div class="tabs"><button id="records-tab" class="${tab==='records'?'active':''}">학생 기록</button><button id="tasks-tab" class="${tab==='tasks'?'active':''}">활동 만들기</button></div><div id="teacher-content"></div>`;
  document.querySelector('#records-tab').onclick=()=>teacher();document.querySelector('#tasks-tab').onclick=()=>teacher('tasks');document.querySelector('#reload').onclick=async()=>{try{await refresh();teacher(tab);toast('최신 기록을 불러왔어요.');}catch(e){toast(e.message);}};
+ if(cloudMode){
+  document.querySelector('#tasks-tab').insertAdjacentHTML('afterend',`<button id="students-tab" class="${tab==='students'?'active':''}">학생 관리</button>`);
+  document.querySelector('#students-tab').onclick=()=>teacher('students');
+ }
+ if(tab==='students')return studentManager();
  if(tab==='tasks')return taskEditor();
  const content=document.querySelector('#teacher-content');
  content.innerHTML=`<div class="stats" id="stats"></div><div class="section-title"><h2>활동별 응답 살펴보기</h2><div class="exports"><a class="secondary" id="export" download="문해기초-현재답안.csv">현재 답안 CSV ↓</a><a class="secondary" id="export-history" download="문해기초-수정이력.csv">수정 이력 CSV ↓</a></div></div><div class="filters"><select id="filter-school" aria-label="학교 필터"><option value="">전체 기록 함께 보기</option>${context.schools.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><select id="filter-grade" aria-label="학년 필터"><option value="">모든 학년</option><option value="5">5학년</option><option value="6">6학년</option></select><input id="filter-classroom" type="number" min="1" max="30" placeholder="반" aria-label="반 필터"><input id="filter-number" type="number" min="1" max="60" placeholder="학생 번호" aria-label="학생 번호 필터"><select id="filter-kind" aria-label="영역 필터"><option value="">모든 영역</option>${Object.entries(labels).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select><input id="filter-day" type="date" aria-label="활동일 필터"></div><p class="note">선택한 조건의 기록만 표시하고 CSV로 내려받습니다. 날짜와 학생별로 답안과 수정 과정을 확인할 수 있습니다.</p><div id="records"></div>`;
@@ -58,6 +75,31 @@ function teacher(tab='records'){
  document.querySelectorAll('.filters input,.filters select').forEach(x=>x.oninput=list);list();
 }
 function schoolName(id){return context.schools.find(s=>s.id===Number(id))?.name||'두 학교 공통';}
+async function studentManager(){
+ const content=document.querySelector('#teacher-content');
+ content.innerHTML='<p role="status">등록된 학생을 불러오고 있어요…</p>';
+ try{
+  const students=await api('students');if(!content.isConnected)return;
+  const studentLabel=s=>`${s.school_name} ${s.grade}학년 ${s.classroom}반 ${s.number}번`;
+  content.innerHTML=`<div class="panel"><h2>학생 비밀번호 초기화</h2><p>학생을 확인한 뒤 재설정 코드를 발급하세요. 학생은 30분 안에 새 비밀번호를 직접 정할 수 있으며, 기존 답안은 유지됩니다.</p><div class="filters"><select id="student-school" aria-label="학생 관리 학교"><option value="">모든 학교</option>${context.schools.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><select id="student-grade" aria-label="학생 관리 학년"><option value="">모든 학년</option><option value="5">5학년</option><option value="6">6학년</option></select><input id="student-classroom" type="number" min="1" max="30" placeholder="반" aria-label="학생 관리 반"><input id="student-number" type="number" min="1" max="60" placeholder="번호" aria-label="학생 관리 번호"></div><div id="student-reset-status" role="status" aria-live="polite"></div><div id="student-list"></div></div>`;
+  const status=content.querySelector('#student-reset-status');
+  function list(){
+   const filters=Object.fromEntries(['school','grade','classroom','number'].map(k=>[k,content.querySelector('#student-'+k).value]));
+   const shown=students.filter(s=>Object.entries(filters).every(([k,v])=>!v||String(s[k==='school'?'school_id':k])===v));
+   content.querySelector('#student-list').innerHTML=shown.length?shown.map(s=>`<div class="record"><strong>${esc(studentLabel(s))}</strong><p class="note">${s.reset_pending?'새 비밀번호 설정 대기 · 필요하면 코드를 다시 발급하세요.':'등록된 학생'}</p><button class="secondary" data-reset-student="${s.id}">${s.reset_pending?'재설정 코드 재발급':'비밀번호 초기화'}</button></div>`).join(''):'<p class="empty">조건에 맞는 등록 학생이 없습니다.</p>';
+   content.querySelectorAll('[data-reset-student]').forEach(button=>button.onclick=()=>{
+    const student=students.find(s=>s.id===Number(button.dataset.resetStudent));
+    status.innerHTML=`<div class="answer"><strong>${esc(studentLabel(student))}</strong><p>이 학생의 기존 로그인을 종료하고, 새 비밀번호를 정할 수 있는 코드를 발급합니다. 답안과 수정 이력은 유지됩니다.</p><button class="primary" id="confirm-reset-student">이 학생의 재설정 코드 발급</button> <button class="quiet" id="cancel-reset-student">취소</button></div>`;
+    status.querySelector('#cancel-reset-student').onclick=()=>{status.innerHTML='';};
+    status.querySelector('#confirm-reset-student').onclick=async event=>{
+     const confirm=event.currentTarget;confirm.disabled=true;confirm.textContent='코드 발급 중…';
+     try{const result=await api('reset-student',{id:student.id});student.reset_pending=true;list();status.innerHTML=`<div class="answer"><strong>${esc(studentLabel(student))}</strong><p>재설정 코드: <strong>${esc(result.code)}</strong></p><p>유효 시간: ${esc(new Date(result.expires).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul'}))}까지</p><p>해당 학생에게만 알려주세요. 학생 입장 화면의 ‘비밀번호를 잊었나요?’에서 코드와 새 비밀번호를 입력하면 됩니다.</p></div>`;}catch(error){confirm.disabled=false;confirm.textContent='재설정 코드 다시 발급';toast(error.message);}
+    };
+   });
+  }
+  content.querySelectorAll('.filters input,.filters select').forEach(input=>input.oninput=()=>{status.innerHTML='';list();});list();
+ }catch(error){if(content.isConnected){content.innerHTML='<p class="error" role="alert"></p>';content.querySelector('.error').textContent=error.message;}}
+}
 function taskEditor(){
  const content=document.querySelector('#teacher-content');
  content.innerHTML=`<div class="workspace"><aside class="reading"><span class="eyebrow">매일 조금씩, 문해 기초 다지기</span><h2>세 가지 활동으로<br>아침을 시작해요.</h2><p>짧은 지문과 분명한 질문으로 읽고 쓰는 기초를 다집니다.</p><p class="hint"><b>어휘</b><br>뜻 추론 → 문맥의 단서 → 활용 문장<br><br><b>문장</b><br>문장 연결 → 접속 표현을 선택한 이유<br><br><b>문단</b><br>중심 문장 → 핵심 요약 → 질문</p><p class="note">활동 결과는 학생별로 쌓이며, 피드백을 읽고 답안을 고쳐 쓸 수 있습니다.</p></aside><div class="panel"><h2>새 활동 등록</h2><form id="task-form"><div class="row"><div><label for="task-day">활동 날짜</label><input id="task-day" name="day" type="date" value="${day()}" required></div><div><label for="task-grade">대상 학년</label><select id="task-grade" name="grade"><option value="5">5학년</option><option value="6">6학년</option></select></div></div><label for="task-school">대상 학교</label><select id="task-school" name="school_id"><option value="">두 학교 공통</option>${context.schools.filter(s=>s.id!==3).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><label for="task-kind">활동 영역</label><select id="task-kind" name="kind">${Object.entries(labels).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select><label for="task-title">활동 이름</label><input id="task-title" name="title" maxlength="100" required><label for="task-passage">지문 / 연결할 문장</label><textarea id="task-passage" name="passage" maxlength="6000" required></textarea><p class="note">문단 활동은 문장마다 줄을 바꾸어 2문장 이상 입력하세요.</p><label for="task-target">핵심 낱말 / 접속 표현 (문단은 생략 가능)</label><input id="task-target" name="target" maxlength="300"><label for="task-hint">생각을 돕는 길잡이</label><textarea id="task-hint" name="hint" maxlength="1000"></textarea><label for="task-source">자료 출처 메모</label><input id="task-source" name="source_note" maxlength="500" placeholder="예: 직접 작성한 지문"><button class="primary full">활동 등록하기</button><p class="error" id="error" role="alert"></p></form></div></div><div class="section-title"><h2>등록한 활동 ${tasks.length}개</h2></div><p class="note">기존 응답을 보존하도록 등록된 활동은 유지됩니다. 바뀐 내용은 새 활동으로 등록하세요.</p>${tasks.map(t=>`<details class="record"><summary>${esc(t.day)} · ${esc(schoolName(t.school_id))} · ${t.grade}학년 · ${labels[t.kind]} · ${esc(t.title)} ${t.day>day()?'<span class="badge">공개 예정</span>':''}</summary><div class="passage">${esc(t.passage)}</div><p>${esc(t.target)}</p><p class="hint">${esc(t.hint)}</p><p class="note">${esc(t.source_note)}</p></details>`).join('')}`;
