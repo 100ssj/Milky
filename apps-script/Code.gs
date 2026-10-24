@@ -160,7 +160,29 @@ function resetPin_(body){
 }
 function tasks_(session){
   const identity=identity_(session);
-  return rows_('tasks').filter(t=>session.role==='teacher'||(Number(t.grade)===identity.grade&&t.day<=day_()&&(!t.school_id||Number(t.school_id)===identity.school_id))).map(t=>({...t,id:Number(t.id),grade:Number(t.grade),school_id:t.school_id?Number(t.school_id):null})).sort((a,b)=>b.day.localeCompare(a.day)||a.id-b.id);
+  const tasks=rows_('tasks').filter(t=>session.role==='teacher'||(Number(t.grade)===identity.grade&&t.day<=day_()&&(!t.school_id||Number(t.school_id)===identity.school_id))).map(t=>({...t,id:Number(t.id),grade:Number(t.grade),school_id:t.school_id?Number(t.school_id):null,bank:String(t.request_id||'').startsWith('bank-')})).sort((a,b)=>b.day.localeCompare(a.day)||a.id-b.id);
+  if(session.role==='teacher')return tasks;
+  const selected=dailyTaskIds_(identity,tasks);
+  return tasks.map(t=>({...t,day:t.bank?day_():t.day,daily:selected.includes(t.id)}));
+}
+function dailyTaskIds_(identity,tasks){
+  const p=PropertiesService.getScriptProperties(),key='DAILY_'+identity.student,today=day_(),stored=p.getProperty(key),previous=stored?JSON.parse(stored):null;
+  if(previous&&previous.day===today&&previous.ids.every(id=>tasks.some(t=>t.id===id)))return previous.ids;
+  const history=rows_('history').filter(h=>Number(h.student)===identity.student),done=new Set(history.map(h=>Number(h.task))),ids=[];
+  for(const kind of ['word','sentence','paragraph']){
+    const candidates=tasks.filter(t=>t.kind===kind).sort((a,b)=>a.id-b.id);if(!candidates.length)continue;
+    // Keep a task already submitted today, including work started before this feature.
+    const answered=history.filter(h=>h.saved.startsWith(today)&&candidates.some(t=>t.id===Number(h.task))).at(-1);
+    if(answered){ids.push(Number(answered.task));continue;}
+    // A teacher's explicitly dated activity takes priority over the practice bank.
+    const planned=candidates.filter(t=>t.day===today&&!t.bank&&!String(t.request_id||'').startsWith('seed-'));
+    const practice=candidates.filter(t=>t.bank),available=practice.length?practice:candidates;
+    const unfinished=available.filter(t=>!done.has(t.id));
+    const pool=planned.length?planned:(unfinished.length?unfinished:available);
+    let hash=2166136261;for(const char of identity.student+'|'+today+'|'+kind)hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
+    ids.push(pool[hash%pool.length].id);
+  }
+  p.setProperty(key,JSON.stringify({day:today,ids}));return ids;
 }
 function responses_(session){
   const taskMap=new Map(rows_('tasks').map(t=>[t.id,t])),students=new Map(rows_('students').map(s=>[s.id,s])),schools=new Map(rows_('schools').map(s=>[s.id,s]));
@@ -169,7 +191,7 @@ function responses_(session){
     if(session.role!=='teacher'&&Number(h.student)!==Number(session.student))continue;
     const task=taskMap.get(h.task),student=students.get(h.student);if(!task||!student)continue;
     let record=records.get(h.response_id);
-    if(!record){const f=feedback.get(h.response_id)||{};record={...task,id:Number(h.response_id),task:Number(h.task),student:Number(h.student),school_id:Number(student.school_id),school_name:schools.get(student.school_id).name,grade:Number(student.grade),classroom:Number(student.classroom),number:Number(student.number),created:h.saved,revisions:[],feedback:f.feedback||''};if(session.role==='teacher')record.observation=f.observation||'';delete record.request_id;records.set(h.response_id,record);}
+    if(!record){const f=feedback.get(h.response_id)||{};record={...task,day:String(task.request_id||'').startsWith('bank-')?h.saved.slice(0,10):task.day,id:Number(h.response_id),task:Number(h.task),student:Number(h.student),school_id:Number(student.school_id),school_name:schools.get(student.school_id).name,grade:Number(student.grade),classroom:Number(student.classroom),number:Number(student.number),created:h.saved,revisions:[],feedback:f.feedback||''};if(session.role==='teacher')record.observation=f.observation||'';delete record.request_id;records.set(h.response_id,record);}
     record.answers=JSON.parse(h.answers_json);record.confidence=h.confidence;record.updated=h.saved;record.revisions.push({answers:record.answers,confidence:h.confidence,saved:h.saved});
   }
   return [...records.values()].sort((a,b)=>b.updated.localeCompare(a.updated)||b.id-a.id);
@@ -184,7 +206,7 @@ function submit_(session,body,requestId){
   if(!CONFIDENCE_.includes(body.confidence))fail_('자기 점검을 선택해 주세요.');
   const history=rows_('history'),duplicate=history.find(h=>h.submission_id===requestId&&Number(h.student)===identity.student);
   if(duplicate)return {ok:true,saved:duplicate.saved};
-  const previous=history.find(h=>Number(h.student)===identity.student&&Number(h.task)===task.id),saved=now_();
+  const previous=history.find(h=>Number(h.student)===identity.student&&Number(h.task)===task.id&&(!task.bank||h.saved.startsWith(day_()))),saved=now_();
   append_('history',{submission_id:requestId,response_id:previous?previous.response_id:next_(history,'response_id'),student:identity.student,task:task.id,answers_json:JSON.stringify(answers),confidence:body.confidence,saved},{identity,task});
   return {ok:true,saved};
 }
@@ -221,7 +243,7 @@ function rows_(key){
 }
 function historyDisplay_(row,identity,task){
   const answers=JSON.parse(row.answers_json);
-  return [identity.school_name,identity.grade,identity.classroom,identity.number,task.day,{word:'어휘',sentence:'문장',paragraph:'문단'}[task.kind],task.title,task.target,...['meaning','clue','example','sentence','reason','central','summary','question'].map(k=>answers[k]||''),row.confidence,row.saved];
+  return [identity.school_name,identity.grade,identity.classroom,identity.number,(task.bank||String(task.request_id||'').startsWith('bank-'))?row.saved.slice(0,10):task.day,{word:'어휘',sentence:'문장',paragraph:'문단'}[task.kind],task.title,task.target,...['meaning','clue','example','sentence','reason','central','summary','question'].map(k=>answers[k]||''),row.confidence,row.saved];
 }
 function append_(key,row,display){const [name,headers]=TABLES_[key],sheet=book_().getSheetByName(name);let values=headers.map(k=>row[k]==null?'':row[k]);if(key==='history'&&display)values=values.concat(historyDisplay_(row,display.identity,display.task));write_(sheet,sheet.getLastRow()+1,values);}
 function update_(key,index,row){const [name,headers]=TABLES_[key];write_(book_().getSheetByName(name),index+2,headers.map(k=>row[k]==null?'':row[k]));}

@@ -118,4 +118,44 @@ for(const row of displayed.slice(1)){
   assert.deepEqual(row.slice(7,11).map(String),[school[1],student[2],student[3],student[4]].map(String));
   assert.equal(row[23],row[5]);assert.equal(row[24],row[6]);
 }
-console.log('PASS: school/class isolation, role checks, append-only revisions, idempotency, feedback privacy, CSV, session revocation, rate limits, future tasks and write contention.');
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../apps-script/ActivityBank.gs'),'utf8'),context);
+const bank=plain(context.literacyBank_());
+assert.equal(bank.length,60);assert.equal(new Set(bank.map(t=>t.passage)).size,60);
+for(const grade of [5,6])for(const kind of ['word','sentence','paragraph']){
+  const group=bank.filter(t=>t.grade===grade&&t.kind===kind);assert.equal(group.length,10);
+  for(const task of group){assert.ok(task.passage.trim());if(kind==='paragraph')assert.ok(task.passage.split('\n').length>=(grade===5?3:4));if(kind==='sentence')assert.equal(task.passage.split('\n').length,2);}
+}
+const fixedToday=plain(context.dailyTaskIds_({student:a.student,grade:5,school_id:1},good(call('tasks',{},good(call('join',{...login,pin:'654321'})).token))));
+bank.forEach(task=>context.createTask_({...task,day:context.day_()},task.request_id));
+assert.deepEqual(plain(context.dailyTaskIds_({student:a.student,grade:5,school_id:1},plain(context.rows_('tasks')).filter(t=>Number(t.grade)===5).map(t=>({...t,id:Number(t.id)})))),fixedToday,'adding a bank does not replace the existing daily choice');
+const dailyLogin={code:schools[1].code,grade:6,classroom:3,number:4,pin:'123456'};
+const seen=new Set();let firstBankTask;
+for(let date=0;date<10;date++){
+ if(date)clock+=24*3600000;
+ const learner=good(call('join',dailyLogin)),daily=good(call('tasks',{},learner.token)).filter(t=>t.daily);
+ assert.equal(daily.length,3);assert.equal(new Set(daily.map(t=>t.kind)).size,3);assert.ok(daily.every(t=>t.bank&&t.grade===6));
+ assert.deepEqual(good(call('tasks',{},learner.token)).filter(t=>t.daily).map(t=>t.id),daily.map(t=>t.id));
+ for(const task of daily){
+  assert.ok(!seen.has(task.id),'finished bank tasks must not repeat before exhaustion');seen.add(task.id);
+  if(task.kind==='word'&&!firstBankTask)firstBankTask=task;
+  const answers={word:{meaning:'서로 힘을 모음',clue:'함께 역할을 나누었다.',example:'친구와 협력했다.'},sentence:{sentence:'비가 왔다. 그래서 안에서 놀았다.',reason:'앞 문장이 까닭이다.'},paragraph:{central:task.passage.split('\n')[0],summary:'핵심 내용을 설명한다.',question:'어떤 예가 더 있을까?'}}[task.kind];
+  good(call('submit',{task:task.id,answers,confidence:'조금 알겠어요'},learner.token));
+ }
+}
+assert.equal(seen.size,30);
+clock+=24*3600000;
+const repeatLearner=good(call('join',dailyLogin)),repeated=good(call('tasks',{},repeatLearner.token)).find(t=>t.daily&&t.kind==='word');
+assert.ok(seen.has(repeated.id));
+const repeatBody={task:repeated.id,answers:{meaning:'뜻',clue:'단서',example:'활용 문장'},confidence:'조금 알겠어요'};
+good(call('submit',repeatBody,repeatLearner.token));good(call('submit',repeatBody,repeatLearner.token));
+const repeatedRecords=good(call('responses',{},repeatLearner.token));
+assert.equal(repeatedRecords.length,31);
+assert.equal(repeatedRecords.filter(r=>r.task===repeated.id).length,2);
+assert.equal(repeatedRecords.find(r=>r.task===repeated.id&&r.day===context.day_()).revisions.length,2);
+assert.equal(sheets.get('답안이력').data.at(-1)[11],context.day_(),'readable history uses the actual practice date');
+const dailyTeacherPassword=logs.filter(text=>text.startsWith('새 교사 비밀번호')).at(-1).split(': ').at(-1);
+const dailyAdmin=good(call('join',{role:'teacher',password:dailyTeacherPassword}));
+good(call('task',{...gradeTask,grade:6,day:context.day_(),title:'오늘 교사 지정',school_id:2},dailyAdmin.token));
+const nextStudent=good(call('join',{...dailyLogin,number:5}));
+assert.ok(good(call('tasks',{},nextStudent.token)).some(t=>t.daily&&t.title==='오늘 교사 지정'));
+console.log('PASS: roles, privacy, recovery, original history, 60 bank texts, stable daily choices, 10 days without repeats, dated repeat records and teacher priority.');
