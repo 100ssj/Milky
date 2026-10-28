@@ -7,7 +7,7 @@ const TABLES_ = {
   feedback: ['피드백', ['response_id','feedback','observation','updated']],
   sessions: ['세션', ['token_hash','role','student','created','expires']]
 };
-const ANSWERS_ = {word:['meaning','clue','example'],sentence:['sentence','reason'],paragraph:['central','summary','question']};
+const ANSWERS_ = {word:['meaning','clue','example'],sentence:['sentence','reason','example'],paragraph:['central','summary','question']};
 const CONFIDENCE_ = ['도움이 필요해요','조금 알겠어요','설명할 수 있어요'];
 const HISTORY_DISPLAY_HEADERS_=['학교','학년','반','번호','활동일','영역','활동명','핵심 낱말 / 표현','짐작한 뜻','문맥의 단서','활용 문장','연결한 문장','표현 선택 이유','중심 문장','핵심 요약','질문','자기 점검','저장 시각'];
 
@@ -195,7 +195,10 @@ function submit_(session,body,requestId){
   if(session.role!=='student')fail_('학생으로 입장해 주세요.');
   if(!/^[-\w]{20,100}$/.test(String(requestId||'')))fail_('제출 식별자가 올바르지 않습니다.');
   const identity=identity_(session),task=tasks_(session).find(t=>t.id===Number(body.task));if(!task)fail_('참여할 수 없는 활동입니다.');
-  const answers=body.answers,keys=ANSWERS_[task.kind];
+  const answers=body.answers;
+  // Keep cached old forms usable while new forms require the added field.
+  const legacySentence=task.kind==='sentence'&&body.answer_schema!==2&&answers&&typeof answers==='object'&&!('example' in answers);
+  const keys=legacySentence?['sentence','reason']:ANSWERS_[task.kind];
   if(!answers||typeof answers!=='object'||Array.isArray(answers)||Object.keys(answers).sort().join('|')!==[...keys].sort().join('|')||keys.some(k=>typeof answers[k]!=='string'||!answers[k].trim()||answers[k].length>2000))fail_('모든 답안을 2,000자 이내로 작성해 주세요.');
   if(task.kind==='paragraph'&&!task.passage.split('\n').includes(answers.central))fail_('중심 문장을 선택해 주세요.');
   if(!CONFIDENCE_.includes(body.confidence))fail_('자기 점검을 선택해 주세요.');

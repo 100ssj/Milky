@@ -82,6 +82,7 @@ class ClassroomTest(unittest.TestCase):
         self.assertEqual(self.request(student, '/api/submit', {'task':future_id})[0], 400)
         self.assertEqual(self.request(stranger, '/api/join', {**login,'pin':'999999'})[0], 401)
         self.assertEqual(self.request(student, '/api/logout', {})[0], 200)
+
         self.assertEqual(self.request(student, '/api/me')[0], 401)
         self.assertEqual(self.request(student, '/api/join', login)[0], 200)
         self.assertEqual(len(self.request(student, '/api/responses')[1]), 3)
@@ -154,6 +155,25 @@ class ClassroomTest(unittest.TestCase):
             self.assertTrue(list(Path(self.tmp.name).glob('before-two-schools-*.sqlite3')))
         finally:
             server.DB = original_db
+
+    def test_sentence_example_preserves_legacy_answers(self):
+        student, teacher = self.client(), self.client()
+        self.assertEqual(self.request(student, '/api/join', {'grade':5,'classroom':4,'number':58,'pin':'123456','code':'ONSAEM56'})[0], 200)
+        task = next(t for t in self.request(student, '/api/tasks')[1] if t['kind'] == 'sentence')
+        original = {'sentence':'비가 왔다. 그래서 실내에서 놀았다.','reason':'앞 문장이 까닭이다.'}
+        payload = {'task':task['id'],'answers':original,'confidence':'조금 알겠어요'}
+        self.assertEqual(self.request(student, '/api/submit', payload)[0], 200)
+        self.assertEqual(self.request(student, '/api/submit', {**payload,'answer_schema':2})[0], 400)
+        example = '여러 운동을 좋아한다. 예를 들어 줄넘기와 달리기를 즐긴다.'
+        self.assertEqual(self.request(student, '/api/submit', {**payload,'answer_schema':2,'answers':{**original,'example':''}})[0], 400)
+        self.assertEqual(self.request(student, '/api/submit', {**payload,'answer_schema':2,'answers':{**original,'example':example}})[0], 200)
+        record = next(r for r in self.request(student, '/api/responses')[1] if r['task'] == task['id'])
+        self.assertEqual(record['answers']['example'], example)
+        self.assertEqual(record['revisions'][0]['answers'], original)
+        self.assertEqual(self.request(teacher, '/api/join', {'role':'teacher','password':'test-teacher-only'})[0], 200)
+        for route in ('/api/export', '/api/export-history'):
+            rows = list(csv.DictReader(io.StringIO(self.request(teacher, route)[1].decode('utf-8-sig'))))
+            self.assertTrue(any(r['활용 문장'] == example for r in rows))
 
 if __name__ == '__main__':
     unittest.main()

@@ -224,7 +224,10 @@ class Handler(BaseHTTPRequestHandler):
                     if not task:
                         raise ValueError('참여할 수 없는 활동입니다.')
                     answers = body.get('answers', {})
-                    keys = {'word': ['meaning', 'clue', 'example'], 'sentence': ['sentence', 'reason'], 'paragraph': ['central', 'summary', 'question']}[task['kind']]
+                    keys = {'word': ['meaning', 'clue', 'example'], 'sentence': ['sentence', 'reason', 'example'], 'paragraph': ['central', 'summary', 'question']}[task['kind']]
+                    # Older cached clients may still send the original two fields.
+                    if task['kind'] == 'sentence' and body.get('answer_schema') != 2 and isinstance(answers, dict) and 'example' not in answers:
+                        keys = ['sentence', 'reason']
                     if not isinstance(answers, dict) or set(answers) != set(keys) or any(not isinstance(v, str) or not v.strip() or len(v) > 2000 for v in answers.values()):
                         raise ValueError('모든 답안을 2,000자 이내로 작성해 주세요.')
                     if task['kind'] == 'paragraph' and answers['central'] not in task['passage'].splitlines():
